@@ -1,0 +1,61 @@
+name: Validate Reviewer Team on develop
+
+on:
+  pull_request:
+    branches:
+      - develop
+    types: [submitted, edited, reopened, synchronize]
+
+jobs:
+  validate-reviewer:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+      contents: read
+
+    steps:
+    - name: Check reviewers
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const prNumber = context.payload.pull_request.number;
+          const repo = context.repo;
+
+          const reviews = await github.rest.pulls.listReviews({
+            owner: repo.owner,
+            repo: repo.repo,
+            pull_number: prNumber
+          });
+
+          const uniqueApprovers = new Set(
+            reviews.data
+              .filter(r => r.state === 'APPROVED')
+              .map(r => r.user.login)
+          );
+
+          // Define valid reviewer team members
+          const teamMembers = new Set();
+
+          async function loadTeamMembers(teamSlug) {
+            const members = await github.paginate(
+              github.rest.teams.listMembersInOrg,
+              {
+                org: repo.owner,
+                team_slug: teamSlug
+              }
+            );
+            members.forEach(member => teamMembers.add(member.login));
+          }
+
+          await loadTeamMembers('reviewer');
+          await loadTeamMembers('release');
+
+          const approverFound = [...uniqueApprovers].some(user =>
+            teamMembers.has(user)
+          );
+
+          if (!approverFound) {
+            core.setFailed("❌ PR must be approved by at least one member of @sabintest/reviewer or @sabintest/release.");
+          } else {
+            console.log("✅ Approved by an authorized team member.");
+          }
