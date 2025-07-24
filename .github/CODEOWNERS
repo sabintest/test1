@@ -1,0 +1,2 @@
+# For develop branch, allow either 'reviewer' or 'release' team to approve
+* @sabintest/review @sabintest/release
